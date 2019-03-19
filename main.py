@@ -17,7 +17,6 @@ DIR = os.path.dirname(os.path.realpath(__file__))
 headers = { 'User-Agent' : 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.67 Safari/537.36' }
 
 valid_screen_types = ["2D", "3D", "IMAX 2D", "IMAX 3D", "4DX", "IMAX"]
-cinema_list_urls = []
 
 # Try running this locally.
 def send_mail(to_email, subject, message):
@@ -54,7 +53,8 @@ def send_mail(to_email, subject, message):
   except Exception as err:
     print(err)
   
-def list(to_email, movie_keywords, cinema_keyword):
+def scrape_list(to_email, movie_keywords, cinema_keyword):
+  cinema_list_urls = []
   movie_list_url = "https://paytm.com/movies/bengaluru"
 
   try:
@@ -83,9 +83,9 @@ def list(to_email, movie_keywords, cinema_keyword):
       cinema_list_urls.append(cinema_list_url)
 
   print(cinema_list_urls)
-  detail(to_email, movie_keywords, cinema_keyword)
+  detail(cinema_list_urls, to_email, movie_keywords, cinema_keyword)
 
-def detail(to_email, movie_keywords, cinema_keyword):
+def detail(cinema_list_urls, to_email, movie_keywords, cinema_keyword):
   cinemas = []
   for url in cinema_list_urls:
     request = urllib.request.Request(url, headers=headers)
@@ -122,7 +122,9 @@ def detail(to_email, movie_keywords, cinema_keyword):
 try:
   with open(os.path.join(DIR, "config.json"), "r") as file:
     config = json.load(file)
-    list(config["notifyTo"], config["movieKeywords"], config["cinemaKeyword"])
+    configs = config if isinstance(config, list) else [config]
+    for config in configs:
+      scrape_list(config["notifyTo"], config["movieKeywords"], config["cinemaKeyword"])
 except FileNotFoundError as err:
   print(err)
 

@@ -2,16 +2,18 @@
 
 import base64
 import json
+import logging
 import os
 
 import urllib.request
 from lxml import etree
 
-with open("mailgun.json", "r") as file:
-  mailgun = json.load(file)
-
-
 DIR = os.path.dirname(os.path.realpath(__file__))
+
+logging.basicConfig(filename=os.path.join(DIR, "movienotifier.log"), level=logging.DEBUG, format="%(asctime)s:%(levelname)s:%(message)s")
+
+with open(os.path.join(DIR, "mailgun.json"), "r") as file:
+  mailgun = json.load(file)
 
 
 headers = { 'User-Agent' : 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.67 Safari/537.36' }
@@ -49,9 +51,10 @@ def send_mail(to_email, subject, message):
 
   try:
     response = urllib.request.urlopen(request)
-    print(response.read())
+    logging.info(response.read())
   except Exception as err:
-    print(err)
+    logging.error(err)
+    logging.error(err)
   
 def scrape_list(to_email, movie_keywords, cinema_keyword):
   cinema_list_urls = []
@@ -74,7 +77,6 @@ def scrape_list(to_email, movie_keywords, cinema_keyword):
 
   for el in scope:
     el_text = " ".join(el.xpath("a//text()")).lower()
-    # print(el_text)
     match = all(kw.lower() in el_text for kw in movie_keywords)
 
     if match:
@@ -82,7 +84,7 @@ def scrape_list(to_email, movie_keywords, cinema_keyword):
       cinema_list_url = "https://paytm.com" + rel_cinema_url
       cinema_list_urls.append(cinema_list_url)
 
-  print(cinema_list_urls)
+  logging.info(cinema_list_urls)
   detail(cinema_list_urls, to_email, movie_keywords, cinema_keyword)
 
 def detail(cinema_list_urls, to_email, movie_keywords, cinema_keyword):
@@ -108,15 +110,15 @@ def detail(cinema_list_urls, to_email, movie_keywords, cinema_keyword):
               show_times.append({ "time" : show_time, "screenType": screen_type if screen_type in valid_screen_types else "" })
             cinemas.append({ "name": cinema_name, "showTimes" : show_times })
         else:
-          print("Wrong element hit for cinema_name")
+          logging.warning("Wrong element hit for cinema_name")
     except Exception as err:
-      print(str(err) + " : " + url)
+      logging.error(str(err) + " : " + url)
       send_mail(to_email, "Error", str(err) + url)
 
   if len(cinemas):
     message = "Search result for {}, {} \n".format(movie_keywords, cinema_keyword)
     message += json.dumps(cinemas, indent=2)
-    print(message)
+    logging.info(message)
     send_mail(to_email, doc_title, message)
 
 try:
@@ -126,7 +128,7 @@ try:
     for config in configs:
       scrape_list(config["notifyTo"], config["movieKeywords"], config["cinemaKeyword"])
 except FileNotFoundError as err:
-  print(err)
+  logging.error(err)
 
 
 

@@ -4,15 +4,16 @@ import base64
 import json
 import logging
 import os
+import traceback
 
 import urllib.request
 from lxml import etree
 
-DIR = os.path.dirname(os.path.realpath(__file__))
+PROJECT_ROOT = os.path.dirname(os.path.realpath(__file__))
 
-logging.basicConfig(filename=os.path.join(DIR, "movienotifier.log"), level=logging.DEBUG, format="%(asctime)s:%(levelname)s:%(message)s")
+logging.basicConfig(filename=os.path.join(PROJECT_ROOT, "movienotifier.log"), level=logging.DEBUG, format="%(asctime)s:%(levelname)s:%(message)s")
 
-with open(os.path.join(DIR, "mailgun.json"), "r") as file:
+with open(os.path.join(PROJECT_ROOT, "mailgun.json"), "r") as file:
   mailgun = json.load(file)
 
 
@@ -51,41 +52,44 @@ def send_mail(to_email, subject, message):
 
   try:
     response = urllib.request.urlopen(request)
-    logging.info(response.read())
+    logging.info(response.read().decode())
   except Exception as err:
     logging.error(err)
-    logging.error(err)
-  
+
 def scrape_list(to_email, movie_keywords, cinema_keyword):
   cinema_list_urls = []
   movie_list_url = "https://paytm.com/movies/bengaluru"
 
+  request = urllib.request.Request(movie_list_url, headers=headers)
   try:
-    request = urllib.request.Request(movie_list_url, headers=headers)
+    response = urllib.request.urlopen(request)
+    htmlparser = etree.HTMLParser()
+    tree = etree.parse(response, htmlparser)
+
+    scope = tree.xpath("//div[@id='popular-movies']/ul//li")
+
+    if not len(scope):
+      send_mail(to_email, "Error", "movie_list selector failing")
+
+    for el in scope:
+      el_text = " ".join(el.xpath("a//text()")).lower()
+      match = all(kw.lower() in el_text for kw in movie_keywords)
+
+      if match:
+        rel_cinema_url = " ".join(el.xpath("a/@href"))
+        cinema_list_url = "https://paytm.com" + rel_cinema_url
+        cinema_list_urls.append(cinema_list_url)
+
+    logging.info(cinema_list_urls)
+    return detail(cinema_list_urls, to_email, movie_keywords, cinema_keyword)
   except Exception as err:
+    e_traceback = traceback.format_exception(err.__class__, err, err.__traceback__)
+    logging.error("traceback={}".format(e_traceback))
+    # for line in e_traceback: print(line)
     send_mail(to_email, "Error", err)
-  response = urllib.request.urlopen(request)
+    return None, []
 
 
-  htmlparser = etree.HTMLParser()
-  tree = etree.parse(response, htmlparser)
-
-  scope = tree.xpath("//div[@id='popular-movies']/ul//li")
-
-  if not len(scope):
-    send_mail(to_email, "Error", "movie_list selector failing")
-
-  for el in scope:
-    el_text = " ".join(el.xpath("a//text()")).lower()
-    match = all(kw.lower() in el_text for kw in movie_keywords)
-
-    if match:
-      rel_cinema_url = " ".join(el.xpath("a/@href"))
-      cinema_list_url = "https://paytm.com" + rel_cinema_url
-      cinema_list_urls.append(cinema_list_url)
-
-  logging.info(cinema_list_urls)
-  detail(cinema_list_urls, to_email, movie_keywords, cinema_keyword)
 
 def detail(cinema_list_urls, to_email, movie_keywords, cinema_keyword):
   cinemas = []
@@ -115,22 +119,28 @@ def detail(cinema_list_urls, to_email, movie_keywords, cinema_keyword):
       logging.error(str(err) + " : " + url)
       send_mail(to_email, "Error", str(err) + url)
 
-  if len(cinemas):
-    message = "Search result for {}, {} \n".format(movie_keywords, cinema_keyword)
-    message += json.dumps(cinemas, indent=2)
-    logging.info(message)
-    send_mail(to_email, doc_title, message)
+  return doc_title, cinemas
 
-try:
-  with open(os.path.join(DIR, "config.json"), "r") as file:
-    config = json.load(file)
-    configs = config if isinstance(config, list) else [config]
-    for config in configs:
-      scrape_list(config["notifyTo"], config["movieKeywords"], config["cinemaKeyword"])
-except FileNotFoundError as err:
-  logging.error(err)
+if __name__ == "__main__":
+  try:
+    with open(os.path.join(PROJECT_ROOT, "config.json"), "r") as file:
+      config = json.load(file)
+      configs = config if isinstance(config, list) else [config]
+      for config in configs:
+        movie_keywords = config["movieKeywords"]
+        cinema_keyword = config["cinemaKeyword"]
+        to_email = config["notifyTo"]
+        doc_title, cinemas = scrape_list(to_email, movie_keywords, cinema_keyword)
+        if len(cinemas):
+          message = "Search result for {}, {} \n".format(movie_keywords, cinema_keyword)
+          message += json.dumps(cinemas, indent=2)
+          logging.info("Result for movie_keywords={}, cinema_keyword={} is cinemas={}".format(movie_keywords, cinema_keyword, json.dumps(cinemas)))
+          send_mail(to_email, doc_title, message)
+  except FileNotFoundError as err:
+    logging.error(err)
 
 
 
 # https://stackoverflow.com/questions/29708708/http-basic-authentication-not-working-in-python-3-4
 # https://stackoverflow.com/questions/36484184/python-make-a-post-request-using-python-3-urllib
+

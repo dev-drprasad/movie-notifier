@@ -21,21 +21,15 @@ headers = { 'User-Agent' : 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (
 
 valid_screen_types = ["2D", "3D", "IMAX 2D", "IMAX 3D", "4DX", "IMAX"]
 
-# Try running this locally.
-def send_mail(to_email, subject, message):
-  # data = urllib.parse.urlencode({
-  #   "from": from_email,
-  #   "to": to_email,
-  #   "subject": subject,
-  #   "text": message
-  # }).encode()
+def format_traceback(ex):
+  tblines = []
+  for line in traceback.format_exception(ex.__class__, ex, ex.__traceback__):
+    tblines.extend(line.splitlines())
+  return tblines.__str__()
+  
 
-  # data = json.dumps({
-  #   "from": from_email,
-  #   "to": [to_email],
-  #   "subject": subject,
-  #   "text": message
-  # }).encode()
+
+def send_mail(to_email, subject, message):
 
   data = urllib.parse.urlencode({
     "from": mailgun["fromEmail"],
@@ -45,7 +39,7 @@ def send_mail(to_email, subject, message):
   }, doseq=True).encode()
   request = urllib.request.Request(mailgun["apiURL"], data=data)
   request.add_header('Content-Type', 'application/x-www-form-urlencoded')
-  # request.add_header('Content-Type', 'application/json')
+
   request.add_header(
     "Authorization",
     "Basic %s" % base64.b64encode(("api:" + mailgun["apiToken"]).encode("ascii")).decode("ascii"))
@@ -82,11 +76,9 @@ def scrape_list(to_email, movie_keywords, cinema_keyword):
 
     logging.info(cinema_list_urls)
     return detail(cinema_list_urls, to_email, movie_keywords, cinema_keyword)
-  except Exception as err:
-    e_traceback = traceback.format_exception(err.__class__, err, err.__traceback__)
-    logging.error("traceback={}".format(e_traceback))
-    # for line in e_traceback: print(line)
-    send_mail(to_email, "Error", err)
+  except Exception as e:
+    logging.error("traceback={}".format(format_traceback(e)))
+    send_mail(to_email, "Error", e)
     return None, []
 
 
@@ -116,7 +108,7 @@ def detail(cinema_list_urls, to_email, movie_keywords, cinema_keyword):
         else:
           logging.warning("Wrong element hit for cinema_name")
     except Exception as err:
-      logging.error(str(err) + " : " + url)
+      logging.error("traceback={}".format(format_traceback(err)))
       send_mail(to_email, "Error", str(err) + url)
 
   return doc_title, cinemas

@@ -51,7 +51,7 @@ def send_mail(to_email, subject, message):
     logging.error(err)
 
 def scrape_list(to_email, movie_keywords, cinema_keyword):
-  cinema_list_urls = []
+  movie_list_urls = []
   movie_list_url = "https://paytm.com/movies/bengaluru"
 
   request = urllib.request.Request(movie_list_url, headers=headers)
@@ -70,22 +70,23 @@ def scrape_list(to_email, movie_keywords, cinema_keyword):
       match = all(kw.lower() in el_text for kw in movie_keywords)
 
       if match:
-        rel_cinema_url = " ".join(el.xpath("a/@href"))
-        cinema_list_url = "https://paytm.com" + rel_cinema_url
-        cinema_list_urls.append(cinema_list_url)
+        rel_movie_url = " ".join(el.xpath("a/@href"))
+        movie_list_url = "https://paytm.com" + rel_movie_url
+        movie_list_urls.append(movie_list_url)
 
-    logging.info(cinema_list_urls)
-    return detail(cinema_list_urls, to_email, movie_keywords, cinema_keyword)
+    logging.info('matched movies with keyword: {}'.format(movie_list_urls))
+    return detail(movie_list_urls, to_email, movie_keywords, cinema_keyword)
   except Exception as e:
     logging.error("traceback={}".format(format_traceback(e)))
     send_mail(to_email, "Error", e)
-    return None, []
+    return []
 
 
 
-def detail(cinema_list_urls, to_email, movie_keywords, cinema_keyword):
-  cinemas = []
-  for url in cinema_list_urls:
+def detail(movie_list_urls, to_email, movie_keywords, cinema_keyword):
+  movies_info = []
+  for url in movie_list_urls:
+    cinemas = []
     request = urllib.request.Request(url, headers=headers)
     try:
       response = urllib.request.urlopen(request)
@@ -107,11 +108,12 @@ def detail(cinema_list_urls, to_email, movie_keywords, cinema_keyword):
             cinemas.append({ "name": cinema_name, "showTimes" : show_times })
         else:
           logging.warning("Wrong element hit for cinema_name")
+      movies_info.append({ "doc_title": doc_title, "cinemas": cinemas })
     except Exception as err:
       logging.error("traceback={}".format(format_traceback(err)))
       send_mail(to_email, "Error", str(err) + url)
 
-  return doc_title, cinemas
+  return movies_info
 
 if __name__ == "__main__":
   try:
@@ -122,12 +124,12 @@ if __name__ == "__main__":
         movie_keywords = config["movieKeywords"]
         cinema_keyword = config["cinemaKeyword"]
         to_email = config["notifyTo"]
-        doc_title, cinemas = scrape_list(to_email, movie_keywords, cinema_keyword)
-        if len(cinemas):
+        movies_info = scrape_list(to_email, movie_keywords, cinema_keyword)
+        if len(movies_info):
           message = "Search result for {}, {} \n".format(movie_keywords, cinema_keyword)
-          message += json.dumps(cinemas, indent=2)
-          logging.info("Result for movie_keywords={}, cinema_keyword={} is cinemas={}".format(movie_keywords, cinema_keyword, json.dumps(cinemas)))
-          send_mail(to_email, doc_title, message)
+          message += json.dumps(movies_info, indent=2)
+          logging.info("Result for movie_keywords={}, cinema_keyword={} is movies={}".format(movie_keywords, cinema_keyword, json.dumps(movies_info)))
+          send_mail(to_email, "Found matches for {}".format(" ".join(movie_keywords)), message)
   except FileNotFoundError as err:
     logging.error(err)
 

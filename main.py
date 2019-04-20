@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import base64
+import hashlib
 import json
 import logging
 import os
@@ -31,24 +32,37 @@ def format_traceback(ex):
 
 def send_mail(to_email, subject, message):
 
-  data = urllib.parse.urlencode({
-    "from": mailgun["fromEmail"],
-    "to": to_email,
-    "subject": subject,
-    "text": message,
-  }, doseq=True).encode()
-  request = urllib.request.Request(mailgun["apiURL"], data=data)
-  request.add_header('Content-Type', 'application/x-www-form-urlencoded')
-
-  request.add_header(
-    "Authorization",
-    "Basic %s" % base64.b64encode(("api:" + mailgun["apiToken"]).encode("ascii")).decode("ascii"))
-
+  is_same_message = False
+  message_hash = hashlib.md5((subject + message).encode()).hexdigest()
   try:
-    response = urllib.request.urlopen(request)
-    logging.info(response.read().decode())
+    with open(os.path.join(PROJECT_ROOT, "sent.txt"), "r") as file:
+      sent_message_hashes = file.read()
+      is_same_message = message_hash in sent_message_hashes
+      logging.info('is_same_message={}'.format(is_same_message))
   except Exception as err:
-    logging.error(err)
+    pass
+
+  if not is_same_message:
+    data = urllib.parse.urlencode({
+      "from": mailgun["fromEmail"],
+      "to": to_email,
+      "subject": subject,
+      "text": message,
+    }, doseq=True).encode()
+    request = urllib.request.Request(mailgun["apiURL"], data=data)
+    request.add_header('Content-Type', 'application/x-www-form-urlencoded')
+
+    request.add_header(
+      "Authorization",
+      "Basic %s" % base64.b64encode(("api:" + mailgun["apiToken"]).encode("ascii")).decode("ascii"))
+
+    try:
+      response = urllib.request.urlopen(request)
+      logging.info(response.read().decode())
+      with open(os.path.join(PROJECT_ROOT, "sent.txt"), "a+") as file:
+        file.write(message_hash + '\n')
+    except Exception as err:
+      logging.error(err)
 
 def scrape_list(to_email, movie_keywords, cinema_keyword):
   movie_list_urls = []
